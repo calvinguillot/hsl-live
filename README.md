@@ -41,6 +41,21 @@ You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
 
-
 npm install @capacitor/android
 npm install gh-pages --save-dev
+
+pulsing on stop
+fix the text over lap
+capacitor
+splash
+navbar
+tool tip
+gtihub pages
+remove table but keep the speed on tooltip
+smooth animations, pulsing, vehcil move, stops show/hide
+change color palette
+hsl icon on black and splash screen
+update readme
+favicon
+api key hinding on prod
+location gps of user

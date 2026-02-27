@@ -6,13 +6,12 @@ export const MODE_COLORS: Record<string, string> = {
 	FERRY: '#007a97'
 };
 
-const SIZE = 70;
+export const SIZE = 70;
 const CENTER = SIZE / 2;
-const CIRCLE_RADIUS = 18;
+export const CIRCLE_RADIUS = 18;
 const ARROW_WIDTH = 16;
 const ARROW_HEIGHT = 13;
 const ARROW_GAP = 4;
-const STOP_BORDER_WIDTH = 2.5;
 
 function hexToRgba(hex: string): string {
 	const r = parseInt(hex.slice(1, 3), 16);
@@ -21,7 +20,7 @@ function hexToRgba(hex: string): string {
 	return `rgba(${r},${g},${b},1)`;
 }
 
-function drawVehicleIcon(ctx: CanvasRenderingContext2D, fillColor: string, stopped: boolean) {
+function drawCircle(ctx: CanvasRenderingContext2D, fillColor: string, shortName: string) {
 	const fill = hexToRgba(fillColor);
 
 	ctx.fillStyle = fill;
@@ -29,14 +28,15 @@ function drawVehicleIcon(ctx: CanvasRenderingContext2D, fillColor: string, stopp
 	ctx.arc(CENTER, CENTER, CIRCLE_RADIUS, 0, Math.PI * 2);
 	ctx.fill();
 
-	if (stopped) {
-		ctx.strokeStyle = '#ffffff';
-		ctx.lineWidth = STOP_BORDER_WIDTH;
-		ctx.beginPath();
-		ctx.arc(CENTER, CENTER, CIRCLE_RADIUS, 0, Math.PI * 2);
-		ctx.stroke();
-	}
+	ctx.fillStyle = '#ffffff';
+	ctx.font = 'bold 18px sans-serif';
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'middle';
+	ctx.fillText(shortName, CENTER, CENTER);
+}
 
+function drawArrow(ctx: CanvasRenderingContext2D, fillColor: string) {
+	const fill = hexToRgba(fillColor);
 	const arrowBaseY = CENTER - CIRCLE_RADIUS - ARROW_GAP;
 	const arrowTipY = arrowBaseY - ARROW_HEIGHT;
 	const halfW = ARROW_WIDTH / 2;
@@ -52,7 +52,8 @@ function drawVehicleIcon(ctx: CanvasRenderingContext2D, fillColor: string, stopp
 
 /**
  * Generate vehicle icons for each unique (mode, shortName) pair.
- * Returns data URLs keyed by `${mode}_${shortName}`.
+ * Returns data URLs keyed by `${mode}_${shortName}` for circle+text
+ * and `${mode}_${shortName}_arrow` for the directional arrow.
  */
 export function generateVehicleIcons(
 	entries: Array<{ mode: string; shortName: string }>
@@ -73,12 +74,12 @@ export function generateVehicleIcons(
 		const fillColor = MODE_COLORS[mode] ?? '#888888';
 
 		ctx.clearRect(0, 0, SIZE, SIZE);
-		drawVehicleIcon(ctx, fillColor, false);
+		drawCircle(ctx, fillColor, shortName);
 		result[key] = canvas.toDataURL('image/png');
 
 		ctx.clearRect(0, 0, SIZE, SIZE);
-		drawVehicleIcon(ctx, fillColor, true);
-		result[`${key}_stopped`] = canvas.toDataURL('image/png');
+		drawArrow(ctx, fillColor);
+		result[`${key}_arrow`] = canvas.toDataURL('image/png');
 	}
 
 	return result;
