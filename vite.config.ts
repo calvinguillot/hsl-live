@@ -5,6 +5,20 @@ import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+	server: {
+		proxy: {
+			'/api/hsl': {
+				target: 'https://realtime.hsl.fi',
+				changeOrigin: true,
+				rewrite: (path) => path.replace(/^\/api\/hsl/, '')
+			},
+			'/api/digitransit': {
+				target: 'https://api.digitransit.fi',
+				changeOrigin: true,
+				rewrite: (path) => path.replace(/^\/api\/digitransit/, '')
+			}
+		}
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [
