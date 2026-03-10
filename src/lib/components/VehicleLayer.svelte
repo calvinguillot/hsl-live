@@ -12,7 +12,6 @@
 
 	const ICON_SCALE = 0.6;
 	const VEHICLE_PIXEL_RADIUS = CIRCLE_RADIUS * ICON_SCALE;
-	const PULSE_DURATION_MS = 1500;
 
 	let {
 		vehicles,
@@ -29,11 +28,8 @@
 	let modeIcons = $state<Record<string, string>>({});
 
 	const mapCtx = getMapContext();
-	const stoppedTimestamps = new Map<string, number>();
 
 	let geojsonData = $derived.by(() => {
-		const currentlyStoppedIds = new Set<string>();
-
 		const features = vehicles
 			.filter(
 				(e) => e.vehicle?.position?.latitude != null && e.vehicle?.position?.longitude != null
@@ -53,15 +49,6 @@
 				const color = MODE_COLORS[mode] ?? '#888888';
 				const iconKey = `${mode}_${shortName}`;
 
-				let stoppedSince = 0;
-				if (stopped) {
-					currentlyStoppedIds.add(e.id);
-					if (!stoppedTimestamps.has(e.id)) {
-						stoppedTimestamps.set(e.id, performance.now());
-					}
-					stoppedSince = stoppedTimestamps.get(e.id)!;
-				}
-
 				return {
 					type: 'Feature' as const,
 					geometry: {
@@ -76,18 +63,11 @@
 						bearing: e.vehicle?.position?.bearing ?? 0,
 						routeId,
 						stopped,
-						stoppedSince,
 						speed: e.vehicle?.position?.speed ?? 0,
 						color
 					}
 				};
 			});
-
-		for (const id of stoppedTimestamps.keys()) {
-			if (!currentlyStoppedIds.has(id)) {
-				stoppedTimestamps.delete(id);
-			}
-		}
 
 		return { type: 'FeatureCollection' as const, features };
 	});
@@ -114,41 +94,19 @@
 		modeIcons = generateVehicleIcons(unique);
 	});
 
-	$effect(() => {
-		let frame: number;
-		function animate() {
-			const now = performance.now();
-			const map = mapCtx.map;
-			if (map?.getLayer('vehicle-pulse')) {
-				const phase: ExpressionSpecification = [
-					'/',
-					['%', ['-', now, ['get', 'stoppedSince']], PULSE_DURATION_MS],
-					PULSE_DURATION_MS
-				];
-				map.setPaintProperty('vehicle-pulse', 'circle-radius', [
-					'+',
-					VEHICLE_PIXEL_RADIUS,
-					['*', VEHICLE_PIXEL_RADIUS, phase]
-				]);
-				map.setPaintProperty('vehicle-pulse', 'circle-opacity', ['*', 0.6, ['-', 1, phase]]);
-			}
-			frame = requestAnimationFrame(animate);
-		}
-		frame = requestAnimationFrame(animate);
-		return () => cancelAnimationFrame(frame);
-	});
+	let speedFieldExpr: ExpressionSpecification = $derived.by(() => [
+		'concat',
+		['to-string', ['round', ['*', ['coalesce', ['get', 'speed'], ['literal', 0]], 3.6]]],
+		' km/h'
+	] satisfies ExpressionSpecification);
 
-	let speedFieldExpr: ExpressionSpecification = $derived.by(() => {
-		if (!selectedRouteId) return ['literal', ''] satisfies ExpressionSpecification;
+	let textOpacityExpr: ExpressionSpecification = $derived.by(() => {
+		if (!selectedRouteId) return ['literal', 0] satisfies ExpressionSpecification;
 		return [
 			'case',
 			['==', ['get', 'routeId'], selectedRouteId],
-			[
-				'concat',
-				['to-string', ['round', ['*', ['coalesce', ['get', 'speed'], ['literal', 0]], 3.6]]],
-				' km/h'
-			],
-			['literal', '']
+			['literal', 1],
+			['literal', 0]
 		] satisfies ExpressionSpecification;
 	});
 </script>
@@ -157,13 +115,15 @@
 	<ImageLoader images={modeIcons}>
 		<GeoJSONSource id="vehicles" data={geojsonData}>
 			<CircleLayer
-				id="vehicle-pulse"
+				id="vehicle-stopped-ring"
 				filter={['==', ['get', 'stopped'], true]}
 				paint={{
-					'circle-radius': VEHICLE_PIXEL_RADIUS,
+					'circle-radius': VEHICLE_PIXEL_RADIUS + 3,
 					'circle-color': ['get', 'color'],
-					'circle-opacity': 0.6,
-					'circle-stroke-width': 0
+					'circle-opacity': 0,
+					'circle-stroke-width': 3,
+					'circle-stroke-color': ['get', 'color'],
+					'circle-stroke-opacity': 1
 				}}
 			/>
 			<SymbolLayer
@@ -182,7 +142,9 @@
 					'text-ignore-placement': true
 				}}
 				paint={{
-					'text-color': '#ffffff'
+					'text-color': '#ffffff',
+					'text-opacity': textOpacityExpr,
+					'text-opacity-transition': { duration: 300 }
 				}}
 			/>
 			<SymbolLayer

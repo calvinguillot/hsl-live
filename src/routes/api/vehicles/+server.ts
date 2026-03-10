@@ -5,6 +5,8 @@ import { json, error } from '@sveltejs/kit';
 const HSL_VEHICLE_POSITIONS_URL =
 	'https://realtime.hsl.fi/realtime/vehicle-positions/v2/hsl';
 
+export const prerender = true;
+
 export async function GET() {
 	const response = await fetch(HSL_VEHICLE_POSITIONS_URL, {
 		headers: {

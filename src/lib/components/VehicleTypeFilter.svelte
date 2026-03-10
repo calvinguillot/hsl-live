@@ -1,12 +1,5 @@
 <script lang="ts">
-	import {
-		BusFront,
-		TramFront,
-		TrainFront,
-		TrainFrontTunnel,
-		Ship,
-		Tractor
-	} from 'lucide-svelte';
+	import { BusFront, TramFront, TrainFront, TrainFrontTunnel, Ship, Tractor } from 'lucide-svelte';
 	import { MODE_COLORS } from '$lib/map-icons';
 
 	export const MODES = ['BUS', 'TRAM', 'SUBWAY', 'RAIL', 'FERRY', 'default'] as const;
@@ -29,7 +22,7 @@
 	}
 </script>
 
-<div class="flex flex-col items-center gap-3">
+<div class="flex flex-col items-center gap-3 rounded-lg p-2 backdrop-blur">
 	{#each items as { mode, Icon, color }}
 		<button
 			type="button"
@@ -37,11 +30,7 @@
 			aria-label="Toggle {mode}"
 			onclick={() => toggle(mode)}
 		>
-			<Icon
-				size={28}
-				strokeWidth={2}
-				color={enabledModes[mode] ? color : '#6b7280'}
-			/>
+			<Icon size={28} strokeWidth={2} color={enabledModes[mode] ? color : '#6b7280'} />
 		</button>
 	{/each}
 </div>
