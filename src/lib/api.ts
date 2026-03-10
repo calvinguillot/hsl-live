@@ -8,35 +8,21 @@ import { CapacitorHttp, Capacitor } from '@capacitor/core';
 const isNative = Capacitor.isNativePlatform();
 const isDev = import.meta.env.DEV;
 
-// Base URLs
-// Native: Direct API access (CapacitorHttp handles CORS)
-// Web Dev: Proxy via Vite (see vite.config.ts)
-// Web Prod: Direct API access (might fail if API doesn't support CORS, consider a proxy if needed)
-// Note: HSL Realtime API and Digitransit API generally require CORS handling or proxy for browser.
-// For GitHub Pages (Prod), we might need a CORS proxy if the API doesn't support it.
-// Using a public CORS proxy as a fallback for demo purposes in prod web.
-const CORS_PROXY = 'https://corsproxy.io/?';
+const HSL_BASE_URL = 'https://realtime.hsl.fi/realtime/vehicle-positions/v2/hsl';
+const DIGITRANSIT_BASE_URL = 'https://api.digitransit.fi/routing/v2/hsl/gtfs/v1';
 
-const HSL_BASE = isNative
-	? 'https://realtime.hsl.fi'
-	: isDev
-		? '/api/hsl'
-		: `${CORS_PROXY}https://realtime.hsl.fi`;
-
-const DIGITRANSIT_BASE = isNative
-	? 'https://api.digitransit.fi'
-	: isDev
-		? '/api/digitransit'
-		: `${CORS_PROXY}https://api.digitransit.fi`;
-
-const HSL_VEHICLE_POSITIONS_URL = `${HSL_BASE}/realtime/vehicle-positions/v2/hsl`;
-const DIGITRANSIT_ROUTING_URL = `${DIGITRANSIT_BASE}/routing/v2/hsl/gtfs/v1`;
+// List of CORS proxies to try in order
+const PROXIES = [
+	(url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+	(url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+	(url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`
+];
 
 export async function fetchVehicles(): Promise<VehicleEntity[]> {
 	if (isNative) {
-		// Native: Use CapacitorHttp
+		// Native: Use CapacitorHttp to bypass CORS
 		const response = await CapacitorHttp.get({
-			url: HSL_VEHICLE_POSITIONS_URL,
+			url: HSL_BASE_URL,
 			headers: {
 				'digitransit-subscription-key': PUBLIC_DIGITRANSIT_SUBSCRIPTION_KEY
 			},
@@ -64,21 +50,60 @@ export async function fetchVehicles(): Promise<VehicleEntity[]> {
 		// @ts-ignore
 		return feed.toJSON().entity ?? [];
 	} else {
-		// Web: Use fetch (with proxy in dev)
-		const response = await fetch(HSL_VEHICLE_POSITIONS_URL, {
-			headers: {
-				'digitransit-subscription-key': PUBLIC_DIGITRANSIT_SUBSCRIPTION_KEY
+		// Web Environment
+		if (isDev) {
+			// Dev: Use local proxy defined in vite.config.ts
+			const url = '/api/hsl/realtime/vehicle-positions/v2/hsl';
+			const response = await fetch(url, {
+				headers: {
+					'digitransit-subscription-key': PUBLIC_DIGITRANSIT_SUBSCRIPTION_KEY
+				}
+			});
+
+			if (!response.ok) {
+				throw new Error(`Failed to fetch vehicle positions: ${response.status}`);
 			}
-		});
 
-		if (!response.ok) {
-			throw new Error(`Failed to fetch vehicle positions: ${response.status}`);
+			const buffer = await response.arrayBuffer();
+			const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(buffer));
+			// @ts-ignore
+			return feed.toJSON().entity ?? [];
+		} else {
+			// Prod Web: Try multiple CORS proxies
+			let lastError: any;
+			
+			// Add timestamp to prevent caching
+			const targetUrl = `${HSL_BASE_URL}?_t=${Date.now()}`;
+
+			for (const proxyFactory of PROXIES) {
+				try {
+					const url = proxyFactory(targetUrl);
+					// Note: We DO NOT send the subscription key here because proxies might strip it
+					// or HSL might block requests with it coming from known proxy IPs.
+					const response = await fetch(url);
+
+					if (!response.ok) {
+						console.warn(`Proxy ${url} failed with status ${response.status}`);
+						continue;
+					}
+
+					const buffer = await response.arrayBuffer();
+					if (buffer.byteLength === 0) {
+						console.warn(`Proxy ${url} returned empty response`);
+						continue;
+					}
+
+					const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(buffer));
+					// @ts-ignore
+					return feed.toJSON().entity ?? [];
+				} catch (err) {
+					console.warn(`Proxy failed:`, err);
+					lastError = err;
+				}
+			}
+
+			throw lastError || new Error('All proxies failed to fetch vehicle positions');
 		}
-
-		const buffer = await response.arrayBuffer();
-		const feed = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(new Uint8Array(buffer));
-		// @ts-ignore
-		return feed.toJSON().entity ?? [];
 	}
 }
 
@@ -90,7 +115,7 @@ export async function fetchRoutes(routeIds: string[]): Promise<Record<string, Ro
 
 	if (isNative) {
 		const response = await CapacitorHttp.post({
-			url: DIGITRANSIT_ROUTING_URL,
+			url: DIGITRANSIT_BASE_URL,
 			headers: {
 				'Content-Type': 'application/graphql',
 				'digitransit-subscription-key': PUBLIC_DIGITRANSIT_SUBSCRIPTION_KEY
@@ -116,7 +141,9 @@ export async function fetchRoutes(routeIds: string[]): Promise<Record<string, Ro
 		}
 		return result;
 	} else {
-		const response = await fetch(DIGITRANSIT_ROUTING_URL, {
+		const url = isDev ? '/api/digitransit/routing/v2/hsl/gtfs/v1' : DIGITRANSIT_BASE_URL;
+
+		const response = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/graphql',
@@ -155,7 +182,7 @@ export async function fetchRouteStops(
 
 	if (isNative) {
 		const response = await CapacitorHttp.post({
-			url: DIGITRANSIT_ROUTING_URL,
+			url: DIGITRANSIT_BASE_URL,
 			headers: {
 				'Content-Type': 'application/graphql',
 				'digitransit-subscription-key': PUBLIC_DIGITRANSIT_SUBSCRIPTION_KEY
@@ -173,7 +200,9 @@ export async function fetchRouteStops(
 		const stops = data.data?.route?.stops ?? [];
 		return stops;
 	} else {
-		const response = await fetch(DIGITRANSIT_ROUTING_URL, {
+		const url = isDev ? '/api/digitransit/routing/v2/hsl/gtfs/v1' : DIGITRANSIT_BASE_URL;
+
+		const response = await fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/graphql',
