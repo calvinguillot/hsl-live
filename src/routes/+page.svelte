@@ -85,7 +85,7 @@
 	}
 
 	function centerMapOnUser(loc: { lat: number; lng: number }, zoom = LOCATION_ZOOM) {
-		mapInstance?.flyTo({ center: [loc.lng, loc.lat], zoom });
+		mapInstance?.flyTo({ center: [loc.lng, loc.lat], zoom, bearing: 0 });
 	}
 
 	async function requestLocation() {
@@ -235,24 +235,54 @@
 </script>
 
 {#if loading}
-	<div class="flex h-screen items-center justify-center text-gray-400">
-		Loading vehicle positions...
-	</div>
+	<div class="flex h-screen items-center justify-center text-gray-400">Loading...</div>
 {:else if errorMsg}
 	<div class="flex h-screen items-center justify-center text-red-400">{errorMsg}</div>
 {:else}
 	<div class="relative h-screen">
-		<h1
+		<!-- <h1
 			class="absolute top-4 left-4 z-50 flex items-center gap-2 rounded-lg p-2 text-xl font-bold text-white backdrop-blur"
 		>
 			<img src="/icon.webp" alt="" class="h-8 w-8 shrink-0 rounded-full object-cover" />
 			HSL-Live
-		</h1>
-		<div class="absolute top-0 right-4 bottom-0 z-50 flex flex-col items-center">
+		</h1> -->
+		<!-- Desktop: right sidebar with vertical filter + location -->
+		<div class="absolute top-0 right-4 bottom-0 z-50 hidden flex-col items-center md:flex">
 			<div class="flex flex-1 items-center justify-center">
 				<VehicleTypeFilter bind:enabledModes />
 			</div>
-			<div class="mb-12 rounded-lg p-2 backdrop-blur">
+			<div class="mb-12 rounded-lg bg-black/20 p-2 backdrop-blur">
+				<button
+					type="button"
+					class="flex items-center justify-center rounded p-1 text-white transition-opacity hover:opacity-90"
+					aria-label={locationRequesting
+						? 'Getting location...'
+						: locationGranted
+							? 'Location on'
+							: 'Locate me'}
+					onclick={requestLocation}
+				>
+					{#if locationRequesting}
+						{#if locationPulseIcon}
+							<LocateFixed size={28} strokeWidth={2} />
+						{:else}
+							<Locate size={28} strokeWidth={2} />
+						{/if}
+					{:else if locationGranted}
+						<LocateFixed size={28} strokeWidth={2} />
+					{:else}
+						<Locate size={28} strokeWidth={2} />
+					{/if}
+				</button>
+			</div>
+		</div>
+
+		<!-- Mobile: bottom pill bar with filter icons + location button -->
+		<div
+			class="absolute right-4 bottom-4 left-4 z-50 flex items-center justify-center gap-3 md:hidden"
+		>
+			<VehicleTypeFilter bind:enabledModes />
+			<div class="rounded-full bg-black/20 p-2 backdrop-blur">
 				<button
 					type="button"
 					class="flex items-center justify-center rounded p-1 text-white transition-opacity hover:opacity-90"
@@ -314,13 +344,13 @@
 			{/if}
 			<VehicleLayer {vehicles} {routeCache} {selectedRouteId} {enabledModes} />
 		</MapLibre>
-		<div class="absolute bottom-2 left-2 space-y-1">
+		<!-- <div class="absolute bottom-2 left-2 space-y-1">
 			<div class="rounded bg-gray-900/80 px-2 py-1 text-xs text-gray-300">
 				{vehicles.length} vehicles · Refreshes every {refreshTime / 1000}s
 			</div>
-			<!-- {#if stopsLoading}
+			{#if stopsLoading}
 				<div class="rounded bg-gray-900/80 px-2 py-1 text-xs text-blue-400">Loading stops...</div>
-			{/if} -->
-		</div>
+			{/if}
+		</div> -->
 	</div>
 {/if}

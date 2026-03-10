@@ -14,7 +14,7 @@
 		{ mode: 'SUBWAY', Icon: TrainFront, color: MODE_COLORS.SUBWAY },
 		{ mode: 'RAIL', Icon: TrainFrontTunnel, color: MODE_COLORS.RAIL },
 		{ mode: 'FERRY', Icon: Ship, color: MODE_COLORS.FERRY },
-		{ mode: 'default', Icon: Tractor, color: '#ffffff' }
+		{ mode: 'default', Icon: Tractor, color: '#eeeeee' }
 	];
 
 	function toggle(mode: (typeof MODES)[number]) {
@@ -22,7 +22,10 @@
 	}
 </script>
 
-<div class="flex flex-col items-center gap-3 rounded-lg p-2 backdrop-blur">
+<!-- Mobile: horizontal pill nav bar at bottom. Desktop: vertical sidebar on right -->
+<div
+	class="flex flex-row items-center gap-2 rounded-full bg-black/20 p-2 backdrop-blur md:flex-col md:gap-3 md:rounded-lg"
+>
 	{#each items as { mode, Icon, color }}
 		<button
 			type="button"

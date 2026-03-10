@@ -1,2 +1,6 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
+
+.maplibregl-ctrl-bottom-right {
+	display: none !important;
+}

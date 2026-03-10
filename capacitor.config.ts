@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.hsl-live.app',
-  appName: 'hsl-live',
+  appName: 'CG HSL Live',
   webDir: 'build',
   plugins: {
     CapacitorHttp: {
