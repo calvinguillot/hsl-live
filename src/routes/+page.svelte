@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
+	import { Capacitor } from '@capacitor/core';
+	import { Geolocation } from '@capacitor/geolocation';
 	import type { MapMouseEvent } from 'maplibre-gl';
+	import type { Map } from 'maplibre-gl';
 	import { MapLibre, GeoJSONSource, CircleLayer } from 'svelte-maplibre-gl';
 	import VehicleLayer from '$lib/components/VehicleLayer.svelte';
 	import VehicleTypeFilter from '$lib/components/VehicleTypeFilter.svelte';
@@ -10,6 +13,7 @@
 	import type { VehicleEntity, RouteDetails } from '$lib/types';
 
 	const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+	const LOCATION_ZOOM = 13;
 	// User location: 50% of vehicle circle size, same style (fill + visible border)
 	const ICON_SCALE = 0.6;
 	const USER_CIRCLE_RADIUS = CIRCLE_RADIUS * ICON_SCALE * 0.5;
@@ -37,24 +41,61 @@
 	let locationGranted = $state(false);
 	let locationRequesting = $state(false);
 	let locationPulseIcon = $state(false);
+	let mapInstance = $state<Map | undefined>(undefined);
+	let initialCenterDone = $state(false);
 
 	const refreshTime = 1500;
+	const LOCATION_REFRESH_MS = 30_000; // 30s – much slower than vehicle API
+	const DEFAULT_CENTER = { lng: 24.94, lat: 60.17 };
 	const PULSE_INTERVAL = 400;
 
-	function requestLocation() {
-		if (!('geolocation' in navigator)) return;
+	async function getCurrentLocation(options?: {
+		maximumAge?: number;
+	}): Promise<{ lat: number; lng: number } | null> {
+		const maximumAge = options?.maximumAge ?? 0;
+		try {
+			if (Capacitor.getPlatform() === 'web') {
+				return new Promise((resolve) => {
+					if (!navigator.geolocation) {
+						resolve(null);
+						return;
+					}
+					navigator.geolocation.getCurrentPosition(
+						(pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+						() => resolve(null), // Silently ignore errors (e.g. timeout)
+						{ enableHighAccuracy: true, timeout: 10000, maximumAge }
+					);
+				});
+			}
+			const permissionStatus = await Geolocation.checkPermissions();
+			if (permissionStatus.location !== 'granted') {
+				const request = await Geolocation.requestPermissions();
+				if (request.location !== 'granted') return null;
+			}
+			const pos = await Geolocation.getCurrentPosition({
+				enableHighAccuracy: true,
+				timeout: 10000,
+				maximumAge
+			});
+			return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+		} catch {
+			return null;
+		}
+	}
+
+	function centerMapOnUser(loc: { lat: number; lng: number }, zoom = LOCATION_ZOOM) {
+		mapInstance?.flyTo({ center: [loc.lng, loc.lat], zoom });
+	}
+
+	async function requestLocation() {
 		locationRequesting = true;
-		navigator.geolocation.getCurrentPosition(
-			(pos) => {
-				locationRequesting = false;
-				locationGranted = true;
-				userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-			},
-			() => {
-				locationRequesting = false;
-			},
-			{ enableHighAccuracy: true }
-		);
+		const loc = await getCurrentLocation();
+		locationRequesting = false;
+		if (loc) {
+			locationGranted = true;
+			userLocation = loc;
+			centerMapOnUser(loc);
+		}
 	}
 
 	$effect(() => {
@@ -67,16 +108,20 @@
 
 	$effect(() => {
 		if (!locationGranted) return;
-		const intervalId = setInterval(() => {
-			navigator.geolocation.getCurrentPosition(
-				(pos) => {
-					userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-				},
-				() => {},
-				{ enableHighAccuracy: true }
-			);
-		}, refreshTime);
+		const intervalId = setInterval(async () => {
+			const loc = await getCurrentLocation({
+				maximumAge: LOCATION_REFRESH_MS
+			});
+			if (loc) userLocation = loc;
+		}, LOCATION_REFRESH_MS);
 		return () => clearInterval(intervalId);
+	});
+
+	// Center map on user location when map is ready and we have initial location
+	$effect(() => {
+		if (initialCenterDone || !mapInstance || !userLocation) return;
+		initialCenterDone = true;
+		centerMapOnUser(userLocation);
 	});
 
 	let routeStopsGeoJSON = $derived.by(() => {
@@ -111,6 +156,14 @@
 	});
 
 	onMount(() => {
+		// Fetch user location on launch (runs in parallel with vehicle data)
+		getCurrentLocation().then((loc) => {
+			if (loc) {
+				locationGranted = true;
+				userLocation = loc;
+			}
+		});
+
 		async function fetchVehicles(): Promise<VehicleEntity[]> {
 			const res = await fetch('/api/vehicles');
 			if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -212,13 +265,9 @@
 {:else}
 	<div class="relative h-screen">
 		<h1
-			class="absolute top-4 left-4 z-50 flex items-center gap-2 rounded-lg p-2 text-xl font-bold text-white drop-shadow-lg backdrop-blur"
+			class="absolute top-4 left-4 z-50 flex items-center gap-2 rounded-lg p-2 text-xl font-bold text-white backdrop-blur"
 		>
-			<img
-				src="/icon.webp"
-				alt=""
-				class="h-8 w-8 shrink-0 rounded-full object-cover"
-			/>
+			<img src="/icon.webp" alt="" class="h-8 w-8 shrink-0 rounded-full object-cover" />
 			HSL-Live
 		</h1>
 		<div class="absolute top-0 right-4 bottom-0 z-50 flex flex-col items-center">
@@ -252,10 +301,11 @@
 		</div>
 		<div class="flex flex-1 items-center justify-center"></div>
 		<MapLibre
+			bind:map={mapInstance}
 			class="h-full w-full"
 			style={DARK_STYLE}
-			center={{ lng: 24.94, lat: 60.17 }}
-			zoom={11}
+			center={DEFAULT_CENTER}
+			zoom={11.5}
 			onclick={handleMapClick}
 		>
 			<GeoJSONSource id="route-stops" data={routeStopsGeoJSON}>
