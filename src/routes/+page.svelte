@@ -11,6 +11,7 @@
 	import { Locate, LocateFixed } from 'lucide-svelte';
 	import { CIRCLE_RADIUS } from '$lib/map-icons';
 	import type { VehicleEntity, RouteDetails } from '$lib/types';
+	import * as api from '$lib/api';
 
 	const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 	const LOCATION_ZOOM = 13;
@@ -164,34 +165,16 @@
 			}
 		});
 
-		async function fetchVehicles(): Promise<VehicleEntity[]> {
-			const res = await fetch('/api/vehicles');
-			if (!res.ok) throw new Error(`API error: ${res.status}`);
-			const data = await res.json();
-			return data.entity ?? [];
-		}
-
-		async function fetchRoutes(routeIds: string[]) {
-			if (routeIds.length === 0) return;
-			const res = await fetch('/api/routes', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ routeIds })
-			});
-			if (!res.ok) return;
-			const data = await res.json();
-			routeCache = { ...routeCache, ...data };
-		}
-
 		async function loadInitial() {
 			try {
-				const list = await fetchVehicles();
+				const list = await api.fetchVehicles();
 				vehicles = list;
 
 				const routeIds = [
 					...new Set(list.map((e) => e.vehicle?.trip?.routeId).filter(Boolean))
 				] as string[];
-				await fetchRoutes(routeIds);
+				const routes = await api.fetchRoutes(routeIds);
+				routeCache = { ...routeCache, ...routes };
 			} catch (err) {
 				errorMsg = `Failed to load: ${err}`;
 			} finally {
@@ -203,7 +186,7 @@
 
 		const interval = setInterval(async () => {
 			try {
-				const list = await fetchVehicles();
+				const list = await api.fetchVehicles();
 				vehicles = list;
 
 				const cachedIds = new Set(Object.keys(routeCache));
@@ -212,7 +195,8 @@
 					.filter((id): id is string => Boolean(id) && !cachedIds.has(id ?? ''));
 				const uniqueNew = [...new Set(newIds)];
 				if (uniqueNew.length > 0) {
-					await fetchRoutes(uniqueNew);
+					const routes = await api.fetchRoutes(uniqueNew);
+					routeCache = { ...routeCache, ...routes };
 				}
 			} catch {
 				// ignore refresh errors
@@ -240,13 +224,7 @@
 		selectedRouteId = routeId;
 		stopsLoading = true;
 		try {
-			const res = await fetch('/api/route-stops', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ routeId })
-			});
-			const data = await res.json();
-			selectedRouteStops = Array.isArray(data) ? data : [];
+			selectedRouteStops = await api.fetchRouteStops(routeId);
 		} catch (err) {
 			console.error('Failed to fetch route stops:', err);
 			selectedRouteStops = [];
