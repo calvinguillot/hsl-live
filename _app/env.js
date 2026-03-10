@@ -1,1 +1,1 @@
-export const env={}
+export const env={"PUBLIC_DIGITRANSIT_SUBSCRIPTION_KEY":"16758b4b9b974f1b8d916b1cdf26518e"}
